@@ -1,7 +1,10 @@
-# VaultX
+<p align="center">
+  <img src="./assets/vaultx_logo.png" alt="VaultX logo" width="">
+</p>
+
+---
 
 VaultX is a secure desktop vault designed to store and manage your private data in one place.
-
 Store your files, images, videos, documents, passwords, notes, and other sensitive information inside a protected vault with a simple and organized interface.
 
 ## Features
