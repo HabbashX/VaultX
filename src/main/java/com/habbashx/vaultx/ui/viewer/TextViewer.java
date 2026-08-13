@@ -126,7 +126,6 @@ public final class TextViewer extends JFrame {
                 return;
             }
         } catch (Exception ignored) {
-            // fall through to default styling
         }
         area.setFont(Fonts.resolveEditorFont(family, size));
         area.setBackground(java.awt.Color.WHITE);

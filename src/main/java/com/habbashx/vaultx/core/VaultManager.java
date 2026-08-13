@@ -83,7 +83,6 @@ public final class VaultManager implements AutoCloseable {
         Files.createDirectories(vm.projectDir);
         Files.createDirectories(vm.blobsDir);
 
-        // Protect the folder (Java fallback - works without admin for basic hiding)
         vm.protectFolder();
 
         byte[] salt = CryptoUtils.randomBytes(CryptoUtils.SALT_BYTES);
@@ -131,7 +130,6 @@ public final class VaultManager implements AutoCloseable {
             }
             throw new IOException("Vault manifest is corrupt or unreadable.", e);
         }
-        // Protect the folder when opening
         vm.protectFolder();
         return vm;
     }
@@ -662,67 +660,50 @@ public final class VaultManager implements AutoCloseable {
         }
     }
 
-    // ---------- Folder Protection using Windows commands ----------
-    // Sets folder as hidden + system + read-only, and applies icacls deny permission
-    // This provides basic protection against casual deletion
-    // Requires Administrator privileges for full effect (UAC prompt)
-    
     public void protectFolder() throws IOException {
         Path dir = vaultDir;
         if (!Files.isDirectory(dir)) {
             throw new IOException("Vault directory does not exist: " + dir);
         }
 
-        // Set DOS hidden + system + read-only attributes
-        // This makes the folder harder to see/delete in Explorer
         try {
             Process p = Runtime.getRuntime().exec(
                     "cmd /c attrib +h +s +r \"" + dir.toAbsolutePath() + "\"");
             p.waitFor();
         } catch (Exception e) {
-            // non-fatal
         }
         
-        // Apply NTFS permission to deny delete for current user
-        // This requires Administrator privileges and will show UAC prompt
         try {
             String user = System.getProperty("user.name");
             Process proc = Runtime.getRuntime().exec(
                     "cmd /c icacls \"" + dir.toAbsolutePath() + "\" /deny:" + user + ":D /T /C /Q");
             proc.waitFor();
         } catch (Exception e) {
-            // non-fatal – hidden attrs still set
         }
     }
 
-    // Removes all protection from the folder
     public void unprotectFolder() throws IOException {
         Path dir = vaultDir;
         if (!Files.isDirectory(dir)) {
             return;
         }
 
-        // Remove hidden + system + read-only attributes
         try {
             Process p = Runtime.getRuntime().exec(
                     "cmd /c attrib -h -s -r \"" + dir.toAbsolutePath() + "\"");
             p.waitFor();
         } catch (Exception e) {
-            // non-fatal
         }
         
-        // Remove deny permission and reset ACLs
         try {
             String user = System.getProperty("user.name");
             Process proc = Runtime.getRuntime().exec(
                     "cmd /c icacls \"" + dir.toAbsolutePath() + "\" /remove:" + user + " /T /C /Q");
             proc.waitFor();
-            // Also reset any remaining settings
             Process proc2 = Runtime.getRuntime().exec(
                     "cmd /c icacls \"" + dir.toAbsolutePath() + "\" /reset /T /C /Q");
             proc2.waitFor();
         } catch (Exception e) {
-            // non-fatal
         }
     }
 }

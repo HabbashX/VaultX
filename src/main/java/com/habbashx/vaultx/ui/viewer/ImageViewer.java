@@ -66,7 +66,6 @@ public final class ImageViewer extends JFrame {
         try {
             loaded = ImageIO.read(source.toFile());
         } catch (Exception ignored) {
-            // falls through
         }
         if (loaded == null) {
             this.image = null;

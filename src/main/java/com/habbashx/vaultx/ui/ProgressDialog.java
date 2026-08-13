@@ -116,10 +116,6 @@ public class ProgressDialog extends JDialog {
         return String.format("%.2f GB", mb / 1024.0);
     }
 
-    /**
-     * A progress bar that flies Nyan Cat across a rainbow trail instead of a plain
-     * blue rectangle. Supports both determinate (0..1) and indeterminate modes.
-     */
     private static final class NyanCatProgressBar extends JComponent {
 
         private static final int TRACK_HEIGHT = 32;
@@ -166,7 +162,6 @@ public class ProgressDialog extends JDialog {
             if (!indeterminate) {
                 return progress;
             }
-            // Smooth back-and-forth sweep for indeterminate mode.
             return (Math.sin(tick * 0.035) + 1.0) / 2.0;
         }
 
@@ -212,8 +207,6 @@ public class ProgressDialog extends JDialog {
 
             clipped.dispose();
 
-            // Draw the cat on the unclipped graphics so it can overflow the (smaller) track,
-            // instead of being cropped to the thin bar's rounded rect.
             if (CAT_IMAGE != null) {
                 g2.drawImage(CAT_IMAGE, catX, catY, CAT_SIZE, CAT_SIZE, null);
             } else {

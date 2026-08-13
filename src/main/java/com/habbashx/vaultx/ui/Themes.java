@@ -55,7 +55,6 @@ public final class Themes {
                 addThemeInfo(result, t);
             }
         } catch (Throwable ignored) {
-            // flatlaf-intellij-themes not on the classpath; core themes only
         }
         return new ArrayList<>(dedupeByName(result));
     }
@@ -68,7 +67,6 @@ public final class Themes {
                 target.add(new ThemeInfo(name, className));
             }
         } catch (Throwable ignored) {
-            // skip malformed theme entry
         }
     }
 

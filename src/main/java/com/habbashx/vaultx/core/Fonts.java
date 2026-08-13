@@ -42,7 +42,6 @@ public final class Fonts {
                 Font base = Font.createFont(Font.TRUETYPE_FONT, in);
                 ge.registerFont(base);
             } catch (Exception ignored) {
-                // font already registered or not loadable; skip
             }
         }
         registered = true;

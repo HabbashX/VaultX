@@ -226,7 +226,6 @@ public final class MainFrame extends JFrame {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } catch (CancellationException e) {
-                    // cancelled
                 } catch (ExecutionException e) {
                     Throwable cause = e.getCause() != null ? e.getCause() : e;
                     showError("Operation failed", cause.getMessage());
