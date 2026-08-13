@@ -40,11 +40,19 @@ public final class LoginDialog extends JFrame {
     public LoginDialog() {
         super("VaultX — Secure Encrypted Vault");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
+        Branding.installWindowIcon(this);
 
         JTabbedPane tabs = new JTabbedPane();
         tabs.addTab("Create New Vault", buildCreatePanel());
         tabs.addTab("Open Vault", buildOpenPanel());
-        setContentPane(tabs);
+
+        JLabel logo = new JLabel(Branding.logo(260));
+        logo.setHorizontalAlignment(SwingConstants.CENTER);
+        logo.setBorder(BorderFactory.createEmptyBorder(18, 18, 6, 18));
+        JPanel root = new JPanel(new BorderLayout());
+        root.add(logo, BorderLayout.NORTH);
+        root.add(tabs, BorderLayout.CENTER);
+        setContentPane(root);
 
         pack();
         setLocationRelativeTo(null);

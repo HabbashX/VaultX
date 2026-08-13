@@ -12,6 +12,10 @@ public final class App {
     @Contract(pure = true)
     private App() {}
 
+    public static void main(String[] args) {
+        main();
+    }
+
     static void main() {
         Fonts.registerBundledFonts();
         Themes.apply(AppSettings.theme(), AppSettings.appFontFamily(), AppSettings.appFontSize());

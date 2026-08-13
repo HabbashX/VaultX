@@ -6,6 +6,7 @@ import com.habbashx.vaultx.core.TempFiles;
 import com.habbashx.vaultx.core.VaultItem;
 import com.habbashx.vaultx.core.VaultManager;
 import com.habbashx.vaultx.ui.AppSettings;
+import com.habbashx.vaultx.ui.Branding;
 import org.fife.ui.rtextarea.RTextScrollPane;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
@@ -45,6 +46,7 @@ public final class TextViewer extends JFrame {
         this.source = source;
 
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+        Branding.installWindowIcon(this);
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {

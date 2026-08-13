@@ -20,7 +20,6 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
-import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
 import javax.swing.SwingWorker;
@@ -32,9 +31,9 @@ import java.awt.FlowLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CancellationException;
@@ -59,10 +58,11 @@ public final class MainFrame extends JFrame {
     private final JButton renameBtn;
     private final JButton deleteBtn;
 
-    public MainFrame(VaultManager manager) {
+    public MainFrame(@NotNull VaultManager manager) {
         super("VaultX — " + manager.vaultName());
         this.manager = manager;
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        Branding.installWindowIcon(this);
         setMinimumSize(new Dimension(820, 480));
         setSize(960, 560);
         setLocationRelativeTo(null);
@@ -244,7 +244,7 @@ public final class MainFrame extends JFrame {
         if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION || fc.getSelectedFiles() == null) {
             return;
         }
-        List<Path> files = Arrays.stream(fc.getSelectedFiles()).map(f -> f.toPath()).toList();
+        List<Path> files = Arrays.stream(fc.getSelectedFiles()).map(File::toPath).toList();
         String subfolder = browser.currentPath();
         runTask("Importing files", "Encrypting and storing files…", (progress, cancelled) -> {
             long[] total = {0};
@@ -421,7 +421,7 @@ public final class MainFrame extends JFrame {
         if (selected.isEmpty()) {
             return;
         }
-        VaultItem item = selected.get(0);
+        VaultItem item = selected.getFirst();
         String newName = (String) JOptionPane.showInputDialog(this,
                 "New name:", "Rename item", JOptionPane.PLAIN_MESSAGE, null, null, item.name);
         if (newName == null || newName.isBlank() || newName.equals(item.name)) {
@@ -439,12 +439,12 @@ public final class MainFrame extends JFrame {
         }
         String message;
         if (selected.isEmpty() && folders.size() == 1) {
-            message = "Delete folder \"" + folders.get(0)
+            message = "Delete folder \"" + folders.getFirst()
                     + "\" and permanently delete everything inside it?";
         } else if (selected.isEmpty()) {
             message = "Delete " + folders.size() + " folders and everything inside them?";
         } else if (folders.isEmpty() && selected.size() == 1) {
-            message = "Permanently delete \"" + selected.get(0).name + "\" from the vault?";
+            message = "Permanently delete \"" + selected.getFirst().name + "\" from the vault?";
         } else {
             message = "Permanently delete " + (selected.size() + folders.size()) + " selected items from the vault?";
         }
@@ -541,7 +541,7 @@ public final class MainFrame extends JFrame {
         if (selected.isEmpty()) {
             return;
         }
-        openItem(selected.get(0));
+        openItem(selected.getFirst());
     }
 
     private void openItem(VaultItem item) {

@@ -3,6 +3,7 @@ package com.habbashx.vaultx.ui.viewer;
 import com.habbashx.vaultx.core.TempFiles;
 import com.habbashx.vaultx.core.VaultItem;
 import com.habbashx.vaultx.core.VaultManager;
+import com.habbashx.vaultx.ui.Branding;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.jetbrains.annotations.NotNull;
@@ -53,6 +54,7 @@ public final class PdfViewer extends JFrame {
         super(item.name + " — PDF");
         this.source = source;
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+        Branding.installWindowIcon(this);
 
         canvas.setHorizontalAlignment(SwingConstants.CENTER);
         canvas.setVerticalAlignment(SwingConstants.CENTER);
