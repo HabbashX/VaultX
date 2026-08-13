@@ -145,6 +145,7 @@ public final class VaultBrowser extends JPanel {
         list.setDragEnabled(true);
         list.setDropMode(javax.swing.DropMode.ON);
         list.setTransferHandler(new VaultTransferHandler());
+        emptyHint.setTransferHandler(new EmptyDropHandler());
 
         list.addMouseListener(new MouseAdapter() {
             @Override
@@ -255,6 +256,10 @@ public final class VaultBrowser extends JPanel {
         return list;
     }
 
+    public JLabel emptyHint() {
+        return emptyHint;
+    }
+
     public void setItems(@NotNull List<VaultItem> items, @NotNull List<String> folders, String vaultName) {
         this.all = items;
         this.folders = folders;
@@ -319,6 +324,27 @@ public final class VaultBrowser extends JPanel {
         if (index >= 0 && index < model.size()) {
             list.setSelectedIndex(index);
         }
+    }
+
+    public void openFolder(String folderPath) {
+        if (folderPath == null || folderPath.isBlank()) {
+            return;
+        }
+        history.push(currentPath);
+        currentPath = folderPath;
+        rebuild();
+        list.requestFocusInWindow();
+    }
+
+    public void selectAll() {
+        if (model.size() > 0) {
+            list.getSelectionModel().setSelectionInterval(0, model.size() - 1);
+            list.requestFocusInWindow();
+        }
+    }
+
+    public void openFilterDialog() {
+        showFilterDialog();
     }
 
     private void activate(Entry entry) {
@@ -471,7 +497,9 @@ public final class VaultBrowser extends JPanel {
     private void rewrap() {
         JViewport viewport = scroll.getViewport();
         viewport.setView(model.isEmpty() ? emptyHint : list);
-        emptyHint.setText(advanced() ? "No matching items." : "This folder is empty.");
+        emptyHint.setText(advanced()
+                ? "No matching items."
+                : "This folder is empty - drag and drop files here to add them.");
         backBtn.setEnabled(!history.isEmpty());
         upBtn.setEnabled(!currentPath.isEmpty());
     }
@@ -628,22 +656,53 @@ public final class VaultBrowser extends JPanel {
                     }
                 }
                 if (support.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
-                    Object data = support.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
-                    if (data instanceof List<?> raw) {
-                        List<Path> paths = new ArrayList<>();
-                        for (Object o : raw) {
-                            if (o instanceof File f) {
-                                paths.add(f.toPath());
-                            }
-                        }
-                        dropHandler.importDropped(paths, target);
-                        return true;
+                    List<Path> paths = pathsFrom(support);
+                    if (paths.isEmpty()) {
+                        return false;
                     }
+                    dropHandler.importDropped(paths, target);
+                    return true;
                 }
             } catch (Exception ignored) {
                 return false;
             }
             return false;
+        }
+    }
+
+    private static List<Path> pathsFrom(TransferHandler.TransferSupport support) {
+        List<Path> paths = new ArrayList<>();
+        try {
+            Object data = support.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
+            if (data instanceof List<?> raw) {
+                for (Object o : raw) {
+                    if (o instanceof File f) {
+                        paths.add(f.toPath());
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return paths;
+    }
+
+    private final class EmptyDropHandler extends TransferHandler {
+        @Override
+        public boolean canImport(TransferSupport support) {
+            return support.isDrop() && support.isDataFlavorSupported(DataFlavor.javaFileListFlavor);
+        }
+
+        @Override
+        public boolean importData(TransferSupport support) {
+            if (!canImport(support)) {
+                return false;
+            }
+            List<Path> paths = pathsFrom(support);
+            if (paths.isEmpty()) {
+                return false;
+            }
+            dropHandler.importDropped(paths, currentPath);
+            return true;
         }
     }
 

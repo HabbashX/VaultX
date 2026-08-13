@@ -4,7 +4,7 @@ VaultX is a cross-platform desktop application for securely encrypting and manag
 
 - **Platform**: Windows, macOS, Linux (Java 25+)
 - **License**: [MIT](LICENSE)
-- **Latest release**: [v1.0.0](https://github.com/HabbashX/VaultX/releases/tag/v1.0.0)
+- **Latest release**: [v1.0.1](https://github.com/HabbashX/VaultX/releases/tag/v1.0.1)
 
 ---
 
@@ -16,19 +16,23 @@ VaultX is a cross-platform desktop application for securely encrypting and manag
 - **Master password security** - a single master password protects the whole vault.
 - **No cloud backend** - your vault stays on your computer; nothing is uploaded anywhere.
 - **Offline-first** - full functionality with no internet connection.
+- **Backup** - one-click and scheduled backups to a folder of your choice, with the last backup time remembered per vault.
 
 ### File operations
-- Import files or entire folders (encrypted on import).
+- Import files or entire folders (encrypted on import), including drag-and-drop from your operating system.
 - Export decrypted copies back to disk.
 - Create, rename, and move folders inside the vault.
-- Rename, move, and permanently delete items.
-- Real-time search filtering across vault contents.
+- Rename, move, or drag items between folders inside the vault.
+- **Trash** - deleted items go to a trash that can be restored, emptied, or auto-purged after a configurable retention period.
+- **Secure delete** - vault blobs are overwritten with random data before removal.
+- Real-time search filtering across vault contents, including recursive whole-vault search with filters for file type, size, and modification date.
 
 ### Built-in viewers
 - **Image viewer** - fast zoom (Ctrl+scroll), zoom-to-cursor, drag-to-pan, fit-to-window, 100% view, and export copy.
 - **PDF viewer** - page navigation, zoom presets (50%-150%), and thumbnail rendering.
 - **Text editor** - full syntax highlighting for dozens of languages, themable.
 - **Media player** - VLC-backed playback with seek, volume, mute, fullscreen, and keyboard shortcuts.
+- **RAM-only preview** - images and text under 8 MB are previewed entirely in memory and never written to disk.
 
 ### Usability
 - Modern FlatLaf UI with multiple themes, selectable fonts, and adjustable sizes.
@@ -40,7 +44,11 @@ VaultX is a cross-platform desktop application for securely encrypting and manag
 - Hides the vault directory and marks it with **Hidden + System + Read-Only** attributes via the `attrib` command.
 - Applies **NTFS ACL deny permissions** to prevent casual deletion.
 - Optionally uses a bundled **Rust DLL** (`vaultx_folder_protector.dll`) for enhanced protection.
-- Applied automatically when creating or opening a vault; removable from the app or by running as Administrator.
+- Applied automatically when creating or opening a vault; can be turned off in Settings and removed from the app or by running as Administrator.
+
+### Brute-force protection
+- **Lockout** - after wrong password attempts the app enforces progressively longer delays (squared, capped at 5 minutes).
+- **Self-destruct** - optionally erases the vault entirely after a configurable number of failed attempts (off by default).
 
 ---
 
@@ -78,7 +86,7 @@ VaultX is a cross-platform desktop application for securely encrypting and manag
 ## Installation
 
 ### Windows (recommended)
-1. Download the latest installer from the [Releases page](https://github.com/HabbashX/VaultX/releases) - e.g. `VaultX-1.0.0.exe`.
+1. Download the latest installer from the [Releases page](https://github.com/HabbashX/VaultX/releases) - e.g. `VaultX-1.0.1.exe`.
 2. Run the installer and follow the prompts (choose the install directory and start-menu shortcut).
 3. Launch **VaultX** from the Start Menu or desktop shortcut.
 
@@ -151,7 +159,7 @@ cp target/lib/* target/app-input/
 jpackage \
   --type exe \
   --name VaultX \
-  --app-version 1.0.0 \
+  --app-version 1.0.1 \
   --vendor "HabbashX" \
   --input target/app-input \
   --main-jar vaultx.jar \
@@ -163,7 +171,7 @@ jpackage \
   --dest exe
 ```
 
-The resulting `exe/VaultX-1.0.0.exe` is a self-contained installer - users do **not** need Java installed.
+The resulting `exe/VaultX-1.0.1.exe` is a self-contained installer - users do **not** need Java installed.
 
 ---
 

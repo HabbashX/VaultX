@@ -14,11 +14,16 @@ import org.jetbrains.annotations.NotNull;
 
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -26,14 +31,17 @@ import javax.swing.JPasswordField;
 import javax.swing.JPopupMenu;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
+import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.*;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Point;
 import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -48,6 +56,7 @@ import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.prefs.Preferences;
 
 public final class MainFrame extends JFrame {
@@ -62,14 +71,13 @@ public final class MainFrame extends JFrame {
     private final VaultManager manager;
     private final Preferences prefs = Preferences.userNodeForPackage(MainFrame.class);
     private final VaultBrowser browser = new VaultBrowser();
-    private final JTextField search = new JTextField(16);
+    private final JTextField search = new JTextField(20);
     private final JLabel status = new JLabel(" ");
-    private final JButton newFolderBtn;
-    private final JButton moveBtn;
-    private final JButton openBtn;
-    private final JButton exportBtn;
-    private final JButton renameBtn;
-    private final JButton deleteBtn;
+    private final AbstractAction openAction;
+    private final AbstractAction exportAction;
+    private final AbstractAction renameAction;
+    private final AbstractAction moveAction;
+    private final AbstractAction deleteAction;
 
     public MainFrame(@NotNull VaultManager manager) {
         super("VaultX — " + manager.vaultName());
@@ -86,51 +94,108 @@ public final class MainFrame extends JFrame {
         } catch (Exception ignored) {
         }
 
-        openBtn = toolbarButton("Open", false);
-        openBtn.addActionListener(e -> openSelection());
-        newFolderBtn = toolbarButton("New Folder", true);
-        newFolderBtn.addActionListener(e -> createFolder());
-        moveBtn = toolbarButton("Move to Folder", false);
-        moveBtn.addActionListener(e -> moveItemsToFolder());
-        JButton importBtn = toolbarButton("Import Files", true);
-        importBtn.addActionListener(e -> importFiles());
-        JButton importFolderBtn = toolbarButton("Import Folder", true);
-        importFolderBtn.addActionListener(e -> importFolder());
-        exportBtn = toolbarButton("Export", false);
-        exportBtn.addActionListener(e -> exportItems());
-        renameBtn = toolbarButton("Rename", false);
-        renameBtn.addActionListener(e -> renameItem());
-        deleteBtn = toolbarButton("Delete", false);
-        deleteBtn.addActionListener(e -> deleteItems());
-        JButton trashBtn = toolbarButton("Trash", true);
-        trashBtn.addActionListener(e -> openTrash());
-        JButton backupBtn = toolbarButton("Backup", true);
-        backupBtn.addActionListener(e -> backupNow());
-        JButton passwordBtn = toolbarButton("Change Password", true);
-        passwordBtn.addActionListener(e -> changePassword());
-        JButton nameBtn = toolbarButton("Rename Vault", true);
-        nameBtn.addActionListener(e -> renameVault());
-        JButton lockBtn = toolbarButton("Lock", true);
-        lockBtn.addActionListener(e -> lock());
-        JButton settingsBtn = toolbarButton("Settings", true);
-        settingsBtn.addActionListener(e -> openSettings());
+        openAction = action("Open", VaultIcons.open(16),
+                KeyStroke.getKeyStroke("control O"), false, e -> openSelection());
+        exportAction = action("Export…", VaultIcons.exportArrow(16),
+                KeyStroke.getKeyStroke("control E"), false, e -> exportItems());
+        renameAction = action("Rename…", VaultIcons.rename(16),
+                KeyStroke.getKeyStroke("F2"), false, e -> renameItem());
+        moveAction = action("Move to Folder…", VaultIcons.moveIcon(16),
+                KeyStroke.getKeyStroke("control M"), false, e -> moveItemsToFolder());
+        deleteAction = action("Move to Trash", VaultIcons.delete(16),
+                KeyStroke.getKeyStroke("DELETE"), false, e -> deleteItems());
+
+        AbstractAction newFolderAction = action("New Folder…", VaultIcons.newFolder(16),
+                KeyStroke.getKeyStroke("control N"), true, e -> createFolder());
+        AbstractAction importFilesAction = action("Import Files…", VaultIcons.importArrow(16),
+                KeyStroke.getKeyStroke("control I"), true, e -> importFiles());
+        AbstractAction importFolderAction = action("Import Folder…", VaultIcons.importArrow(16),
+                KeyStroke.getKeyStroke("control shift I"), true, e -> importFolder());
+        AbstractAction trashAction = action("Open Trash…", VaultIcons.trash(16),
+                KeyStroke.getKeyStroke("control T"), true, e -> openTrash());
+        AbstractAction backupAction = action("Backup Now…", VaultIcons.backup(16),
+                null, true, e -> backupNow());
+        AbstractAction changePasswordAction = action("Change Password…", null,
+                null, true, e -> changePassword());
+        AbstractAction renameVaultAction = action("Rename Vault…", null,
+                null, true, e -> renameVault());
+        AbstractAction lockAction = action("Lock Vault", VaultIcons.lock(16),
+                KeyStroke.getKeyStroke("control L"), true, e -> lock());
+        AbstractAction settingsAction = action("Settings…", VaultIcons.settings(16),
+                KeyStroke.getKeyStroke("control COMMA"), true, e -> openSettings());
+        AbstractAction refreshAction = action("Refresh", null,
+                KeyStroke.getKeyStroke("F5"), true, e -> refresh());
+        AbstractAction selectAllAction = action("Select All", null,
+                KeyStroke.getKeyStroke("control A"), true, e -> browser.selectAll());
+
+        JMenuBar menuBar = new JMenuBar();
+        JMenu fileMenu = new JMenu("File");
+        fileMenu.setMnemonic('F');
+        fileMenu.add(newFolderAction);
+        fileMenu.add(importFilesAction);
+        fileMenu.add(importFolderAction);
+        fileMenu.addSeparator();
+        fileMenu.add(exportAction);
+        fileMenu.addSeparator();
+        fileMenu.add(lockAction);
+
+        JMenu editMenu = new JMenu("Edit");
+        editMenu.setMnemonic('E');
+        editMenu.add(openAction);
+        editMenu.add(renameAction);
+        editMenu.add(moveAction);
+        editMenu.add(deleteAction);
+        editMenu.addSeparator();
+        editMenu.add(selectAllAction);
+        editMenu.add(refreshAction);
+
+        JMenu vaultMenu = new JMenu("Vault");
+        vaultMenu.setMnemonic('V');
+        vaultMenu.add(trashAction);
+        vaultMenu.add(backupAction);
+        vaultMenu.addSeparator();
+        vaultMenu.add(changePasswordAction);
+        vaultMenu.add(renameVaultAction);
+        vaultMenu.addSeparator();
+        vaultMenu.add(settingsAction);
+
+        menuBar.add(fileMenu);
+        menuBar.add(editMenu);
+        menuBar.add(vaultMenu);
+        setJMenuBar(menuBar);
 
         JToolBar bar = new JToolBar("Vault");
         bar.setFloatable(false);
+        bar.setRollover(true);
         bar.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
-        addToBar(bar, importBtn, importFolderBtn);
+        bar.add(toolbarButton(importFilesAction));
+        bar.add(toolbarButton(importFolderAction));
+        bar.add(toolbarButton(newFolderAction));
         bar.addSeparator();
-        addToBar(bar, newFolderBtn, moveBtn, openBtn, exportBtn, renameBtn, deleteBtn, trashBtn);
+        bar.add(toolbarButton(openAction));
+        bar.add(toolbarButton(exportAction));
+        bar.add(toolbarButton(renameAction));
+        bar.add(toolbarButton(moveAction));
+        JButton deleteBtn = toolbarButton(deleteAction);
+        deleteBtn.setText("Delete");
+        bar.add(deleteBtn);
         bar.addSeparator();
-        addToBar(bar, backupBtn);
-        bar.add(nameBtn);
-        bar.add(passwordBtn);
-        bar.add(lockBtn);
-        bar.addSeparator();
-        bar.add(settingsBtn);
-        bar.addSeparator(new java.awt.Dimension(24, 0));
-        bar.add(new JLabel("Search:"));
+        JButton trashBtn = toolbarButton(trashAction);
+        trashBtn.setText("Trash");
+        bar.add(trashBtn);
+        JButton backupBtn = toolbarButton(backupAction);
+        backupBtn.setText("Backup");
+        bar.add(backupBtn);
+        bar.add(Box.createHorizontalGlue());
+        bar.add(new JLabel(VaultIcons.search(16)));
         bar.add(search);
+        JButton clearSearchBtn = new JButton("Clear");
+        clearSearchBtn.setFocusable(false);
+        clearSearchBtn.addActionListener(e -> {
+            search.setText("");
+            search.requestFocusInWindow();
+        });
+        bar.add(clearSearchBtn);
 
         browser.setOpenAction(this::openItem);
         browser.setOnDelete(this::deleteItems);
@@ -151,7 +216,7 @@ public final class MainFrame extends JFrame {
             applyFilter();
         });
 
-        browser.entryList().addMouseListener(new MouseAdapter() {
+        MouseAdapter popupListener = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
                 if (e.isPopupTrigger()) {
@@ -165,7 +230,10 @@ public final class MainFrame extends JFrame {
                     showPopup(e);
                 }
             }
-        });
+        };
+        browser.entryList().addMouseListener(popupListener);
+        browser.emptyHint().addMouseListener(popupListener);
+        browser.addMouseListener(popupListener);
 
         JPanel content = new JPanel(new BorderLayout());
         content.add(bar, BorderLayout.NORTH);
@@ -202,17 +270,26 @@ public final class MainFrame extends JFrame {
         return bar;
     }
 
-    private void addToBar(JToolBar bar, JButton @NotNull ... buttons) {
-        for (JButton b : buttons) {
-            bar.add(b);
-        }
+    private static JButton toolbarButton(Action a) {
+        JButton b = new JButton(a);
+        b.setFocusable(false);
+        b.setFocusPainted(false);
+        return b;
     }
 
-    private @NotNull JButton toolbarButton(String text, boolean initiallyEnabled) {
-        JButton b = new JButton(text);
-        b.setFocusable(false);
-        b.setEnabled(initiallyEnabled);
-        return b;
+    private static AbstractAction action(String name, Icon icon, KeyStroke key,
+                                         boolean enabled, Consumer<ActionEvent> handler) {
+        AbstractAction a = new AbstractAction(name, icon) {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                handler.accept(e);
+            }
+        };
+        a.setEnabled(enabled);
+        if (key != null) {
+            a.putValue(AbstractAction.ACCELERATOR_KEY, key);
+        }
+        return a;
     }
 
     private void refresh() {
@@ -229,11 +306,11 @@ public final class MainFrame extends JFrame {
     private void updateSelectionState() {
         boolean files = !browser.selectedFiles().isEmpty();
         boolean folders = !browser.selectedFolders().isEmpty();
-        openBtn.setEnabled(files);
-        exportBtn.setEnabled(files);
-        renameBtn.setEnabled(files);
-        moveBtn.setEnabled(files);
-        deleteBtn.setEnabled(files || folders);
+        openAction.setEnabled(files);
+        exportAction.setEnabled(files);
+        renameAction.setEnabled(files);
+        moveAction.setEnabled(files);
+        deleteAction.setEnabled(files || folders);
     }
 
     private @NotNull List<VaultItem> selectedItems() {
@@ -732,54 +809,85 @@ public final class MainFrame extends JFrame {
     }
 
     private void showPopup(MouseEvent e) {
-        int index = browser.indexAt(e.getPoint());
-        if (!browser.isSelected(index)) {
+        Component source = (Component) e.getSource();
+        JList<?> list = browser.entryList();
+        Point inList = SwingUtilities.convertPoint(source, e.getPoint(), list);
+        int index = browser.indexAt(inList);
+        if (index >= 0 && !browser.isSelected(index)) {
             browser.selectOnly(index);
         }
         boolean files = !browser.selectedFiles().isEmpty();
         boolean folders = !browser.selectedFolders().isEmpty();
+        boolean selection = files || folders;
+
         JPopupMenu menu = new JPopupMenu();
+        if (selection) {
+            if (files) {
+                menu.add(openAction);
+                menu.add(exportAction);
+                menu.add(renameAction);
+                menu.add(moveAction);
+                menu.add(deleteAction);
+            } else {
+                menu.add(new AbstractAction("Open Folder") {
+                    @Override
+                    public void actionPerformed(ActionEvent ev) {
+                        List<String> selected = browser.selectedFolders();
+                        if (!selected.isEmpty()) {
+                            browser.openFolder(selected.getFirst());
+                        }
+                    }
+                });
+                menu.add(deleteAction);
+            }
+            menu.addSeparator();
+        }
         menu.add(new AbstractAction("New Folder…") {
+            @Override
             public void actionPerformed(ActionEvent ev) {
                 createFolder();
             }
         });
-        JMenuItem newFolderItem = null;
-        if (files) {
-            menu.addSeparator();
-            menu.add(new AbstractAction("Open") {
-                public void actionPerformed(ActionEvent ev) {
-                    openSelection();
-                }
-            });
-            menu.add(new AbstractAction("Export") {
-                public void actionPerformed(ActionEvent ev) {
-                    exportItems();
-                }
-            });
-            menu.add(new AbstractAction("Move to Folder…") {
-                public void actionPerformed(ActionEvent ev) {
-                    moveItemsToFolder();
-                }
-            });
-        }
-        if (folders) {
-            menu.addSeparator();
-            menu.add(new AbstractAction("Delete Folder") {
-                public void actionPerformed(ActionEvent ev) {
-                    deleteItems();
-                }
-            });
-        }
-        if (files) {
-            menu.addSeparator();
-            menu.add(new AbstractAction("Delete") {
-                public void actionPerformed(ActionEvent ev) {
-                    deleteItems();
-                }
-            });
-        }
-        menu.show(browser.entryList(), e.getX(), e.getY());
+        menu.add(new AbstractAction("Import Files…") {
+            @Override
+            public void actionPerformed(ActionEvent ev) {
+                importFiles();
+            }
+        });
+        menu.add(new AbstractAction("Import Folder…") {
+            @Override
+            public void actionPerformed(ActionEvent ev) {
+                importFolder();
+            }
+        });
+        menu.addSeparator();
+        menu.add(new AbstractAction("Search…") {
+            @Override
+            public void actionPerformed(ActionEvent ev) {
+                search.requestFocusInWindow();
+                search.selectAll();
+            }
+        });
+        menu.add(new AbstractAction("Filter by Size/Date…") {
+            @Override
+            public void actionPerformed(ActionEvent ev) {
+                browser.openFilterDialog();
+            }
+        });
+        menu.add(new AbstractAction("Refresh") {
+            @Override
+            public void actionPerformed(ActionEvent ev) {
+                refresh();
+            }
+        });
+        menu.addSeparator();
+        menu.add(new AbstractAction("Select All") {
+            @Override
+            public void actionPerformed(ActionEvent ev) {
+                browser.selectAll();
+            }
+        });
+        menu.show(source, e.getX(), e.getY());
     }
 
     private void showError(String title, String message) {

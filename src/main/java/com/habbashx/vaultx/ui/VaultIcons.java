@@ -127,6 +127,159 @@ final class VaultIcons {
         return cached("generic:" + px, () -> renderPage(OTHER, px));
     }
 
+    static ImageIcon open(int px) {
+        return cached("action-open:" + px, () -> renderFolder(true, px));
+    }
+
+    static ImageIcon importArrow(int px) {
+        return cached("action-import:" + px, () -> {
+            BufferedImage img = newCanvas(px);
+            Graphics2D g = graphics(img, px);
+            g.setColor(INK);
+            g.drawLine(8, 2, 8, 10);
+            g.drawLine(4, 7, 8, 11);
+            g.drawLine(12, 7, 8, 11);
+            g.drawLine(3, 14, 13, 14);
+            g.dispose();
+            return img;
+        });
+    }
+
+    static ImageIcon exportArrow(int px) {
+        return cached("action-export:" + px, () -> {
+            BufferedImage img = newCanvas(px);
+            Graphics2D g = graphics(img, px);
+            g.setColor(INK);
+            g.drawLine(8, 10, 8, 2);
+            g.drawLine(4, 7, 8, 3);
+            g.drawLine(12, 7, 8, 3);
+            g.drawLine(3, 14, 13, 14);
+            g.dispose();
+            return img;
+        });
+    }
+
+    static ImageIcon newFolder(int px) {
+        return cached("action-new-folder:" + px, () -> {
+            BufferedImage img = renderFolder(false, px);
+            Graphics2D g = graphics(img, px);
+            g.setColor(INK);
+            g.drawLine(10, 8, 13, 8);
+            g.drawLine(11, 6, 11, 10);
+            g.dispose();
+            return img;
+        });
+    }
+
+    static ImageIcon moveIcon(int px) {
+        return cached("action-move:" + px, () -> {
+            BufferedImage img = renderFolder(true, px);
+            Graphics2D g = graphics(img, px);
+            g.setColor(INK);
+            g.drawLine(2, 10, 13, 10);
+            g.drawLine(9, 6, 13, 10);
+            g.drawLine(9, 14, 13, 10);
+            g.dispose();
+            return img;
+        });
+    }
+
+    static ImageIcon rename(int px) {
+        return cached("action-rename:" + px, () -> {
+            BufferedImage img = newCanvas(px);
+            Graphics2D g = graphics(img, px);
+            g.setColor(INK);
+            g.fillPolygon(new int[]{13, 15, 6}, new int[]{2, 4, 13}, 3);
+            g.fillPolygon(new int[]{2, 6, 15, 12}, new int[]{13, 10, 8, 4}, 4);
+            g.dispose();
+            return img;
+        });
+    }
+
+    static ImageIcon delete(int px) {
+        return cached("action-delete:" + px, () -> {
+            BufferedImage img = newCanvas(px);
+            Graphics2D g = graphics(img, px);
+            Path2D body = new Path2D.Float();
+            body.moveTo(5, 5);
+            body.lineTo(11, 5);
+            body.lineTo(10, 14);
+            body.lineTo(6, 14);
+            body.closePath();
+            g.setColor(INK);
+            g.fill(body);
+            g.setColor(PAGE);
+            g.drawLine(8, 7, 8, 12);
+            g.setColor(INK);
+            g.drawLine(3, 4, 13, 4);
+            g.drawLine(6, 2, 10, 2);
+            g.dispose();
+            return img;
+        });
+    }
+
+    static ImageIcon trash(int px) {
+        return delete(px);
+    }
+
+    static ImageIcon backup(int px) {
+        return cached("action-backup:" + px, () -> {
+            BufferedImage img = newCanvas(px);
+            Graphics2D g = graphics(img, px);
+            g.setColor(INK);
+            g.fillRoundRect(3, 3, 10, 10, 2, 2);
+            g.setColor(new Color(0xE8EAF0));
+            g.fillRect(5, 5, 6, 4);
+            g.setColor(INK);
+            g.fillRect(5, 11, 6, 2);
+            g.dispose();
+            return img;
+        });
+    }
+
+    static ImageIcon settings(int px) {
+        return cached("action-settings:" + px, () -> {
+            BufferedImage img = newCanvas(px);
+            Graphics2D g = graphics(img, px);
+            g.setColor(INK);
+            g.fillOval(6, 6, 4, 4);
+            for (int i = 0; i < 8; i++) {
+                double a = Math.PI * i / 4;
+                int x1 = 8 + (int) Math.round(5.0 * Math.cos(a));
+                int y1 = 8 + (int) Math.round(5.0 * Math.sin(a));
+                int x2 = 8 + (int) Math.round(7.0 * Math.cos(a));
+                int y2 = 8 + (int) Math.round(7.0 * Math.sin(a));
+                g.drawLine(x1, y1, x2, y2);
+            }
+            g.dispose();
+            return img;
+        });
+    }
+
+    static ImageIcon lock(int px) {
+        return cached("action-lock:" + px, () -> {
+            BufferedImage img = newCanvas(px);
+            Graphics2D g = graphics(img, px);
+            g.setColor(INK);
+            g.drawArc(5, 2, 6, 6, 180, 180);
+            g.fillRoundRect(4, 7, 8, 7, 1, 1);
+            g.dispose();
+            return img;
+        });
+    }
+
+    static ImageIcon search(int px) {
+        return cached("action-search:" + px, () -> {
+            BufferedImage img = newCanvas(px);
+            Graphics2D g = graphics(img, px);
+            g.setColor(INK);
+            g.drawOval(3, 3, 7, 7);
+            g.drawLine(9, 9, 13, 13);
+            g.dispose();
+            return img;
+        });
+    }
+
     private static ImageIcon cached(String key, Supplier<BufferedImage> renderer) {
         return CACHE.computeIfAbsent(key, k -> new ImageIcon(renderer.get()));
     }

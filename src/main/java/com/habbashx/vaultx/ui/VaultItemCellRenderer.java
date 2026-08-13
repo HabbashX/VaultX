@@ -1,6 +1,7 @@
 package com.habbashx.vaultx.ui;
 
 import com.habbashx.vaultx.core.VaultItem;
+import org.jetbrains.annotations.Contract;
 
 import javax.swing.BorderFactory;
 import javax.swing.JLabel;
@@ -33,6 +34,7 @@ public final class VaultItemCellRenderer extends JPanel implements ListCellRende
         setOpaque(true);
     }
 
+    @Contract("_, _, _, _, _ -> this")
     @Override
     public Component getListCellRendererComponent(JList<? extends VaultItem> list, VaultItem value,
                                                   int index, boolean selected, boolean cellHasFocus) {
