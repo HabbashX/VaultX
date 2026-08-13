@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="src/main/resources/images/vaultx_logo.png" width="1000" alt="Logo">
+</p>
+
+---
 # VaultX - Secure Encrypted File Vault
 
 VaultX is a cross-platform desktop application for securely encrypting and managing your personal files. Store files, images, videos, documents, and other sensitive information inside a protected vault that is encrypted locally with your master password. VaultX ships with built-in viewers for images, PDFs, text, audio, and video, plus folder protection for vault directories on Windows.
