@@ -25,6 +25,7 @@ import javax.swing.JToolBar;
 import javax.swing.SwingWorker;
 import javax.swing.*;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -152,9 +153,13 @@ public final class MainFrame extends JFrame {
     }
 
     private @NotNull JPanel buildStatusBar() {
-        JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        JPanel bar = new JPanel(new BorderLayout());
         bar.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
-        bar.add(status);
+        bar.add(status, BorderLayout.WEST);
+        JLabel credit = new JLabel("Developed by HabbashX");
+        credit.setForeground(Color.GRAY);
+        credit.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
+        bar.add(credit, BorderLayout.EAST);
         return bar;
     }
 

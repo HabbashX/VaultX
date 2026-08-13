@@ -52,6 +52,11 @@ public final class LoginDialog extends JFrame {
         JPanel root = new JPanel(new BorderLayout());
         root.add(logo, BorderLayout.NORTH);
         root.add(tabs, BorderLayout.CENTER);
+        JLabel credit = new JLabel("Developed by HabbashX");
+        credit.setHorizontalAlignment(SwingConstants.CENTER);
+        credit.setForeground(Color.GRAY);
+        credit.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+        root.add(credit, BorderLayout.SOUTH);
         setContentPane(root);
 
         pack();

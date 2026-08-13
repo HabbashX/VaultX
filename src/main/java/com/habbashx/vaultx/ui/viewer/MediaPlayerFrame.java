@@ -23,6 +23,7 @@ import javax.swing.JToolBar;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 import java.awt.BorderLayout;
+import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.GraphicsDevice;
 import java.awt.GraphicsEnvironment;
@@ -34,6 +35,7 @@ import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -69,11 +71,16 @@ public final class MediaPlayerFrame extends JFrame {
         try {
             player = new EmbeddedMediaPlayerComponent();
         } catch (Throwable t) {
-            JOptionPane.showMessageDialog(null,
-                    "VLC media player was not found.\n\n"
-                            + "Install the 64-bit VLC 3.x from https://www.videolan.org/vlc/ and restart the app.\n"
-                            + "Details: " + t.getMessage(),
-                    "Media player", JOptionPane.ERROR_MESSAGE);
+            int choice = JOptionPane.showOptionDialog(null,
+                    "VLC media player was not found, so audio and video playback is unavailable.\n\n"
+                            + "Your vault and all other features (images, PDFs, text, encryption) still work.\n\n"
+                            + "To play media, install the free 64-bit VLC 3.x and restart the app.",
+                    "VLC required for media playback", JOptionPane.DEFAULT_OPTION,
+                    JOptionPane.WARNING_MESSAGE, null,
+                    new String[]{"Download VLC", "Close"}, "Download VLC");
+            if (choice == 0) {
+                openDownloadPage();
+            }
             TempFiles.delete(source);
             dispose();
             return;
@@ -260,6 +267,13 @@ public final class MediaPlayerFrame extends JFrame {
             player.mediaPlayer().media().play(source.toString());
         } catch (Throwable t) {
             notice.setText("Could not start playback: " + t.getMessage());
+        }
+    }
+
+    private static void openDownloadPage() {
+        try {
+            Desktop.getDesktop().browse(new URI("https://www.videolan.org/vlc/"));
+        } catch (Throwable ignored) {
         }
     }
 
