@@ -11,6 +11,22 @@
     <name>VaultX</name>
     <description>Encrypted file vault with viewers and editors</description>
 
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>habbashx</id>
+            <name>HabbashX</name>
+            <url>https://github.com/HabbashX</url>
+        </developer>
+    </developers>
+
     <properties>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
