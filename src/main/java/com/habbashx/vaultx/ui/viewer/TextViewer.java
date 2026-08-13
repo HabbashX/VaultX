@@ -11,6 +11,7 @@ import org.fife.ui.rtextarea.RTextScrollPane;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.fife.ui.rsyntaxtextarea.Theme;
+import org.jetbrains.annotations.NotNull;
 
 import javax.swing.JButton;
 import javax.swing.JFrame;
@@ -40,6 +41,14 @@ public final class TextViewer extends JFrame {
     private boolean closed = false;
 
     public TextViewer(VaultItem item, VaultManager manager, Path source) {
+        this(item, manager, source, null);
+    }
+
+    public TextViewer(VaultItem item, VaultManager manager, byte @NotNull [] contentBytes) {
+        this(item, manager, null, contentBytes);
+    }
+
+    private TextViewer(VaultItem item, VaultManager manager, Path source, byte[] contentBytes) {
         super(item.name + " — Editor");
         this.item = item;
         this.manager = manager;
@@ -55,7 +64,9 @@ public final class TextViewer extends JFrame {
 
             @Override
             public void windowClosed(WindowEvent e) {
-                TempFiles.delete(TextViewer.this.source);
+                if (TextViewer.this.source != null) {
+                    TempFiles.delete(TextViewer.this.source);
+                }
             }
         });
 
@@ -68,8 +79,8 @@ public final class TextViewer extends JFrame {
         applyEditorTheme();
 
         try {
-            String content = load(source);
-            area.setText(content);
+            String initial = contentBytes != null ? decode(contentBytes) : load(source);
+            area.setText(initial);
         } catch (IOException e) {
             JOptionPane.showMessageDialog(this, "Could not read file content: " + e.getMessage(),
                     "Editor", JOptionPane.ERROR_MESSAGE);
@@ -133,7 +144,10 @@ public final class TextViewer extends JFrame {
     }
 
     private static String load(java.nio.file.Path path) throws IOException {
-        byte[] raw = Files.readAllBytes(path);
+        return decode(Files.readAllBytes(path));
+    }
+
+    private static String decode(byte[] raw) {
         boolean valid = true;
         try {
             var decoder = StandardCharsets.UTF_8.newDecoder();
@@ -167,7 +181,9 @@ public final class TextViewer extends JFrame {
             @Override
             protected Void doInBackground() throws Exception {
                 manager.updateItemContent(item, new ByteArrayInputStream(bytes), bytes.length, null);
-                manager.exportTo(item, source, null);
+                if (TextViewer.this.source != null) {
+                    manager.exportTo(item, TextViewer.this.source, null);
+                }
                 return null;
             }
 
@@ -196,14 +212,38 @@ public final class TextViewer extends JFrame {
                 return;
             }
         }
-        try {
-            area.setText(load(source));
-            dirty = false;
-            updateTitle();
-        } catch (IOException e) {
-            JOptionPane.showMessageDialog(this, "Could not reload: " + e.getMessage(),
-                    "Editor", JOptionPane.ERROR_MESSAGE);
+        if (source != null) {
+            try {
+                area.setText(load(source));
+                dirty = false;
+                updateTitle();
+            } catch (IOException e) {
+                JOptionPane.showMessageDialog(this, "Could not reload: " + e.getMessage(),
+                        "Editor", JOptionPane.ERROR_MESSAGE);
+            }
+            return;
         }
+        setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR));
+        new SwingWorker<byte[], Void>() {
+            @Override
+            protected byte[] doInBackground() throws Exception {
+                return manager.decryptToBytes(item);
+            }
+
+            @Override
+            protected void done() {
+                setCursor(java.awt.Cursor.getDefaultCursor());
+                try {
+                    area.setText(decode(get()));
+                    dirty = false;
+                    updateTitle();
+                } catch (Exception e) {
+                    Throwable cause = e.getCause() != null ? e.getCause() : e;
+                    JOptionPane.showMessageDialog(TextViewer.this,
+                            "Could not reload: " + cause.getMessage(), "Editor", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.execute();
     }
 
     private void closeRequested() {

@@ -9,17 +9,24 @@ import org.jetbrains.annotations.Nullable;
 import javax.crypto.SecretKey;
 import javax.crypto.AEADBadTagException;
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 public final class VaultManager implements AutoCloseable {
@@ -33,6 +40,16 @@ public final class VaultManager implements AutoCloseable {
             .setPrettyPrinting()
             .disableHtmlEscaping()
             .create();
+
+    private static volatile boolean autoProtect = true;
+
+    public static boolean isAutoProtect() {
+        return autoProtect;
+    }
+
+    public static void setAutoProtect(boolean value) {
+        autoProtect = value;
+    }
 
     private final Path vaultDir;
     private final Path projectDir;
@@ -83,7 +100,9 @@ public final class VaultManager implements AutoCloseable {
         Files.createDirectories(vm.projectDir);
         Files.createDirectories(vm.blobsDir);
 
-        vm.protectFolder();
+        if (autoProtect) {
+            vm.protectFolder();
+        }
 
         byte[] salt = CryptoUtils.randomBytes(CryptoUtils.SALT_BYTES);
         Files.write(vm.saltFile, salt);
@@ -130,7 +149,9 @@ public final class VaultManager implements AutoCloseable {
             }
             throw new IOException("Vault manifest is corrupt or unreadable.", e);
         }
-        vm.protectFolder();
+        if (autoProtect) {
+            vm.protectFolder();
+        }
         return vm;
     }
 
@@ -160,11 +181,39 @@ public final class VaultManager implements AutoCloseable {
         if (manifest == null) {
             return List.of();
         }
-        return new ArrayList<>(manifest.items);
+        List<VaultItem> result = new ArrayList<>();
+        for (VaultItem item : manifest.items) {
+            if (!item.trashed) {
+                result.add(item);
+            }
+        }
+        return result;
+    }
+
+    public synchronized @NotNull List<VaultItem> trashedItems() {
+        if (manifest == null) {
+            return List.of();
+        }
+        List<VaultItem> result = new ArrayList<>();
+        for (VaultItem item : manifest.items) {
+            if (item.trashed) {
+                result.add(item);
+            }
+        }
+        return result;
     }
 
     public int size() {
-        return manifest == null ? 0 : manifest.items.size();
+        if (manifest == null) {
+            return 0;
+        }
+        int count = 0;
+        for (VaultItem item : manifest.items) {
+            if (!item.trashed) {
+                count++;
+            }
+        }
+        return count;
     }
 
     public long totalSize() {
@@ -234,7 +283,7 @@ public final class VaultManager implements AutoCloseable {
         manifest.folders.removeAll(doomedFolders);
         saveManifest();
         for (VaultItem item : doomed) {
-            Files.deleteIfExists(blobFile(item.blobName));
+            secureDelete(blobFile(item.blobName));
         }
     }
 
@@ -395,6 +444,268 @@ public final class VaultManager implements AutoCloseable {
         }
     }
 
+    public byte @NotNull [] decryptToBytes(@NotNull VaultItem item) throws IOException {
+        ensureUnlocked();
+        VaultItem current = find(item.id);
+        if (current == null) {
+            throw new IOException("Item no longer exists in the vault.");
+        }
+        byte[] dataKey = decryptDataKey(current);
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream(
+                    current.size > Integer.MAX_VALUE ? 8192 : (int) current.size);
+            try (InputStream in = Files.newInputStream(blobFile(current.blobName))) {
+                CryptoUtils.streamDecrypt(dataKey, in, out, Progress.noop(), current.size);
+            }
+            return out.toByteArray();
+        } finally {
+            CryptoUtils.wipe(dataKey);
+        }
+    }
+
+    public void backupTo(@NotNull Path destination, Progress progress) throws IOException {
+        ensureUnlocked();
+        if (destination == null) {
+            throw new IOException("Backup destination is required.");
+        }
+        Path dest = destination.toAbsolutePath().normalize();
+        Path src = vaultDir.toAbsolutePath().normalize();
+        if (dest.equals(src) || dest.startsWith(src)) {
+            throw new IOException("Backup folder cannot be inside the vault.");
+        }
+        long total = treeSize(projectDir) + treeSize(blobsDir);
+        if (total <= 0) {
+            total = 1;
+        }
+        long[] done = {0};
+        copyTree(projectDir, dest.resolve(CONFIG_DIR), done, total, progress);
+        copyTree(blobsDir, dest.resolve(BLOBS_DIR), done, total, progress);
+    }
+
+    private static long treeSize(Path root) throws IOException {
+        long total = 0;
+        try (var stream = Files.walk(root)) {
+            for (Path p : stream.toList()) {
+                if (Files.isRegularFile(p)) {
+                    total += Files.size(p);
+                }
+            }
+        }
+        return total;
+    }
+
+    private static void copyTree(Path srcRoot, Path dstRoot, long[] done, long total, Progress progress) throws IOException {
+        List<Path> files;
+        try (var stream = Files.walk(srcRoot)) {
+            files = stream.filter(Files::isRegularFile).sorted().toList();
+        }
+        for (Path src : files) {
+            Path dst = dstRoot.resolve(srcRoot.relativize(src).toString());
+            Path parent = dst.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            try (InputStream in = Files.newInputStream(src);
+                 OutputStream out = new BufferedOutputStream(Files.newOutputStream(dst))) {
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, read);
+                    done[0] += read;
+                    if (progress != null) {
+                        progress.report(done[0], total);
+                    }
+                }
+            }
+        }
+    }
+
+    public synchronized int trashItems(@NotNull List<VaultItem> items) throws IOException {
+        ensureUnlocked();
+        if (items == null || items.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        long now = System.currentTimeMillis();
+        for (VaultItem item : items) {
+            VaultItem current = find(item.id);
+            if (current == null || current.trashed) {
+                continue;
+            }
+            current.trashed = true;
+            current.trashedAt = now;
+            count++;
+        }
+        if (count > 0) {
+            saveManifest();
+        }
+        return count;
+    }
+
+    public synchronized int trashFolder(String folderPath) throws IOException {
+        ensureUnlocked();
+        String folder = normalizeFolder(folderPath);
+        if (folder.isEmpty()) {
+            throw new IOException("Cannot trash the vault root.");
+        }
+        List<VaultItem> victims = new ArrayList<>();
+        for (VaultItem item : manifest.items) {
+            if (!item.trashed && isUnder(item.name, folder)) {
+                victims.add(item);
+            }
+        }
+        return trashItems(victims);
+    }
+
+    public synchronized void restoreItems(@NotNull List<VaultItem> items) throws IOException {
+        ensureUnlocked();
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        boolean changed = false;
+        for (VaultItem item : items) {
+            VaultItem current = find(item.id);
+            if (current == null || !current.trashed) {
+                continue;
+            }
+            String parent = parentOf(current.name);
+            String base = baseOf(current.name);
+            String unique = uniqueNameInFolder(base, parent);
+            current.name = parent.isEmpty() ? unique : parent + "/" + unique;
+            current.trashed = false;
+            current.trashedAt = 0;
+            changed = true;
+        }
+        if (changed) {
+            saveManifest();
+        }
+    }
+
+    public synchronized void purgeTrashed() throws IOException {
+        purgeTrashed(trashedItems());
+    }
+
+    public synchronized void purgeTrashed(@NotNull List<VaultItem> items) throws IOException {
+        ensureUnlocked();
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        List<VaultItem> doomed = new ArrayList<>();
+        for (VaultItem item : items) {
+            VaultItem current = find(item.id);
+            if (current != null && current.trashed) {
+                doomed.add(current);
+            }
+        }
+        if (doomed.isEmpty()) {
+            return;
+        }
+        Set<String> affected = new HashSet<>();
+        for (VaultItem item : doomed) {
+            collectAffectedFolders(item.name, affected);
+        }
+        manifest.items.removeAll(doomed);
+        pruneEmptyFolders(affected);
+        saveManifest();
+        for (VaultItem item : doomed) {
+            secureDelete(blobFile(item.blobName));
+        }
+    }
+
+    public synchronized void autoPurgeExpiredTrash(int retentionDays) throws IOException {
+        if (retentionDays <= 0 || manifest == null) {
+            return;
+        }
+        long cutoff = System.currentTimeMillis() - retentionDays * 86_400_000L;
+        List<VaultItem> doomed = new ArrayList<>();
+        for (VaultItem item : manifest.items) {
+            if (item.trashed && item.trashedAt > 0 && item.trashedAt < cutoff) {
+                doomed.add(item);
+            }
+        }
+        if (!doomed.isEmpty()) {
+            purgeTrashed(doomed);
+        }
+    }
+
+    public static void destroy(Path vaultDir) {
+        Path dir = vaultDir;
+        if (dir == null || !Files.isDirectory(dir) || !Files.isDirectory(dir.resolve(CONFIG_DIR))) {
+            return;
+        }
+        try (var stream = Files.walk(dir)) {
+            stream.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException ignored) {
+                }
+            });
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static void collectAffectedFolders(String name, Set<String> out) {
+        String parent = parentOf(name);
+        while (parent != null && !parent.isEmpty()) {
+            out.add(parent.toLowerCase(Locale.ROOT));
+            parent = parentOf(parent);
+        }
+    }
+
+    private void pruneEmptyFolders(Set<String> affected) {
+        if (manifest == null || manifest.folders == null || affected == null || affected.isEmpty()) {
+            return;
+        }
+        List<String> keep = new ArrayList<>();
+        for (String folder : manifest.folders) {
+            if (!affected.contains(folder.toLowerCase(Locale.ROOT))) {
+                keep.add(folder);
+                continue;
+            }
+            boolean hasContent = false;
+            for (VaultItem item : manifest.items) {
+                if (item.trashed) {
+                    continue;
+                }
+                if (item.name.equalsIgnoreCase(folder) || isUnder(item.name, folder)) {
+                    hasContent = true;
+                    break;
+                }
+            }
+            if (hasContent) {
+                keep.add(folder);
+            }
+        }
+        manifest.folders = keep;
+    }
+
+    private static void secureDelete(Path blob) {
+        if (blob == null) {
+            return;
+        }
+        try {
+            if (Files.exists(blob)) {
+                long size = Files.size(blob);
+                if (size > 0) {
+                    try (SeekableByteChannel channel = Files.newByteChannel(blob, StandardOpenOption.WRITE)) {
+                        long remaining = size;
+                        while (remaining > 0) {
+                            int n = (int) Math.min(16 * 1024L, remaining);
+                            channel.write(ByteBuffer.wrap(CryptoUtils.randomBytes(n)));
+                            remaining -= n;
+                        }
+                    } catch (IOException ignored) {
+                    }
+                }
+            }
+        } catch (IOException ignored) {
+        }
+        try {
+            Files.deleteIfExists(blob);
+        } catch (IOException ignored) {
+        }
+    }
+
     public synchronized void deleteItem(@NotNull VaultItem item) throws IOException {
         ensureUnlocked();
         VaultItem current = find(item.id);
@@ -403,7 +714,7 @@ public final class VaultManager implements AutoCloseable {
         }
         manifest.items.remove(current);
         saveManifest();
-        Files.deleteIfExists(blobFile(current.blobName));
+        secureDelete(blobFile(current.blobName));
     }
 
     public synchronized void renameItem(VaultItem item, String newName) throws IOException {
@@ -570,7 +881,7 @@ public final class VaultManager implements AutoCloseable {
         }
         String full = folder.isEmpty() ? name : folder + "/" + name;
         for (VaultItem item : manifest.items) {
-            if (full.equalsIgnoreCase(item.name)) {
+            if (!item.trashed && full.equalsIgnoreCase(item.name)) {
                 return true;
             }
         }

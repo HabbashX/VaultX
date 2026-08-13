@@ -38,6 +38,7 @@ import java.awt.event.MouseMotionAdapter;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -47,6 +48,7 @@ import java.util.List;
 public final class ImageViewer extends JFrame {
 
     private final Path source;
+    private final VaultManager manager;
     private final BufferedImage image;
     private final BufferedImage[] mip;
     private final ImageCanvas canvas = new ImageCanvas();
@@ -57,15 +59,31 @@ public final class ImageViewer extends JFrame {
     private boolean dragging;
 
     public ImageViewer(VaultItem item, VaultManager manager, Path source) {
+        this(item, manager, source, null);
+    }
+
+    public ImageViewer(VaultItem item, VaultManager manager, byte @NotNull [] contentBytes) {
+        this(item, manager, null, contentBytes);
+    }
+
+    private ImageViewer(VaultItem item, VaultManager manager, Path source, byte[] contentBytes) {
         super(item.name + " — Image");
         this.source = source;
+        this.manager = manager;
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         Branding.installWindowIcon(this);
 
         BufferedImage loaded = null;
-        try {
-            loaded = ImageIO.read(source.toFile());
-        } catch (Exception ignored) {
+        if (contentBytes != null) {
+            try {
+                loaded = ImageIO.read(new ByteArrayInputStream(contentBytes));
+            } catch (Exception ignored) {
+            }
+        } else {
+            try {
+                loaded = ImageIO.read(source.toFile());
+            } catch (Exception ignored) {
+            }
         }
         if (loaded == null) {
             this.image = null;
@@ -73,7 +91,9 @@ public final class ImageViewer extends JFrame {
             this.scroll = new JScrollPane();
             this.info = new JLabel();
             JOptionPane.showMessageDialog(null, "Could not decode image.", "ImageViewer", JOptionPane.ERROR_MESSAGE);
-            TempFiles.delete(source);
+            if (source != null) {
+                TempFiles.delete(source);
+            }
             dispose();
             return;
         }
@@ -122,7 +142,9 @@ public final class ImageViewer extends JFrame {
 
             @Override
             public void windowClosed(WindowEvent e) {
-                TempFiles.delete(ImageViewer.this.source);
+                if (ImageViewer.this.source != null) {
+                    TempFiles.delete(ImageViewer.this.source);
+                }
             }
         });
 
@@ -281,7 +303,11 @@ public final class ImageViewer extends JFrame {
             }
         }
         try {
-            Files.copy(source, dest, StandardCopyOption.REPLACE_EXISTING);
+            if (source != null) {
+                Files.copy(source, dest, StandardCopyOption.REPLACE_EXISTING);
+            } else {
+                manager.exportTo(item, dest, null);
+            }
         } catch (Exception e) {
             JOptionPane.showMessageDialog(this, "Export failed: " + e.getMessage(), "Export",
                     JOptionPane.ERROR_MESSAGE);

@@ -10,6 +10,8 @@ public class VaultItem {
     public String keyNonce;
     public String keyCipher;
     public String blobName;
+    public boolean trashed;
+    public long trashedAt;
 
     public VaultItem() {
     }

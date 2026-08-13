@@ -1,6 +1,7 @@
 package com.habbashx.vaultx.ui;
 
 import com.habbashx.vaultx.core.CryptoUtils;
+import com.habbashx.vaultx.core.Lockout;
 import com.habbashx.vaultx.core.VaultManager;
 import com.habbashx.vaultx.core.WrongPasswordException;
 
@@ -267,6 +268,7 @@ public final class LoginDialog extends JFrame {
     }
 
     private void doCreate() {
+        VaultManager.setAutoProtect(AppSettings.protectFolder());
         String name = createName.getText().trim();
         if (name.isEmpty()) {
             error("Please give your vault a name.");
@@ -325,12 +327,19 @@ public final class LoginDialog extends JFrame {
     }
 
     private void doOpen() {
+        VaultManager.setAutoProtect(AppSettings.protectFolder());
         String loc = openLocation.getText().trim();
         if (loc.isEmpty()) {
             error("Please select the vault folder.");
             return;
         }
         Path target = Paths.get(loc);
+        long lockoutMs = Lockout.currentDelayMillis(target);
+        if (lockoutMs > 0) {
+            long seconds = (lockoutMs + 999) / 1000;
+            error("Too many failed attempts. Try again in " + seconds + " second" + (seconds == 1 ? "" : "s") + ".");
+            return;
+        }
         char[] pwd = openPassword.getPassword();
         if (pwd.length == 0) {
             error("Enter your master password.");
@@ -349,6 +358,7 @@ public final class LoginDialog extends JFrame {
                 setGlassBusy(false);
                 try {
                     VaultManager manager = get();
+                    Lockout.recordSuccess(target);
                     prefs.put(KEY_RECENT_DIR, target.toString());
                     rememberVault(target);
                     wipe(pwd);
@@ -362,7 +372,19 @@ public final class LoginDialog extends JFrame {
                     openPassword.requestFocusInWindow();
                     Throwable cause = cause(e);
                     if (cause instanceof WrongPasswordException) {
-                        error(cause.getMessage());
+                        int attempts = Lockout.recordFailure(target);
+                        if (AppSettings.selfDestruct() && attempts >= AppSettings.maxAttempts()) {
+                            VaultManager.destroy(target);
+                            Lockout.clear(target);
+                            error("Too many failed attempts. The vault has been permanently deleted.");
+                        } else {
+                            long waitMs = Lockout.delayFor(attempts);
+                            String message = cause.getMessage();
+                            if (attempts > 1 && waitMs > 0) {
+                                message += "\n\nNext attempt is locked for " + (waitMs / 1000) + " seconds.";
+                            }
+                            error(message);
+                        }
                     } else {
                         error("Could not open the vault: " + cause.getMessage());
                     }

@@ -1,6 +1,7 @@
 package com.habbashx.vaultx.ui;
 
 import com.habbashx.vaultx.core.CryptoUtils;
+import com.habbashx.vaultx.core.FileTypes;
 import com.habbashx.vaultx.core.Progress;
 import com.habbashx.vaultx.core.TempFiles;
 import com.habbashx.vaultx.core.VaultItem;
@@ -14,14 +15,18 @@ import org.jetbrains.annotations.NotNull;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JPasswordField;
 import javax.swing.JPopupMenu;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
+import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.*;
 import java.awt.BorderLayout;
@@ -33,13 +38,17 @@ import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.prefs.Preferences;
 
 public final class MainFrame extends JFrame {
 
@@ -48,7 +57,10 @@ public final class MainFrame extends JFrame {
         void run(Progress progress, AtomicBoolean cancelled) throws Exception;
     }
 
+    private static final long RAM_PREVIEW_LIMIT = 8 * 1024 * 1024;
+
     private final VaultManager manager;
+    private final Preferences prefs = Preferences.userNodeForPackage(MainFrame.class);
     private final VaultBrowser browser = new VaultBrowser();
     private final JTextField search = new JTextField(16);
     private final JLabel status = new JLabel(" ");
@@ -68,6 +80,12 @@ public final class MainFrame extends JFrame {
         setSize(960, 560);
         setLocationRelativeTo(null);
 
+        VaultManager.setAutoProtect(AppSettings.protectFolder());
+        try {
+            manager.autoPurgeExpiredTrash(AppSettings.trashRetentionDays());
+        } catch (Exception ignored) {
+        }
+
         openBtn = toolbarButton("Open", false);
         openBtn.addActionListener(e -> openSelection());
         newFolderBtn = toolbarButton("New Folder", true);
@@ -84,6 +102,10 @@ public final class MainFrame extends JFrame {
         renameBtn.addActionListener(e -> renameItem());
         deleteBtn = toolbarButton("Delete", false);
         deleteBtn.addActionListener(e -> deleteItems());
+        JButton trashBtn = toolbarButton("Trash", true);
+        trashBtn.addActionListener(e -> openTrash());
+        JButton backupBtn = toolbarButton("Backup", true);
+        backupBtn.addActionListener(e -> backupNow());
         JButton passwordBtn = toolbarButton("Change Password", true);
         passwordBtn.addActionListener(e -> changePassword());
         JButton nameBtn = toolbarButton("Rename Vault", true);
@@ -98,8 +120,9 @@ public final class MainFrame extends JFrame {
         bar.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
         addToBar(bar, importBtn, importFolderBtn);
         bar.addSeparator();
-        addToBar(bar, newFolderBtn, moveBtn, openBtn, exportBtn, renameBtn, deleteBtn);
+        addToBar(bar, newFolderBtn, moveBtn, openBtn, exportBtn, renameBtn, deleteBtn, trashBtn);
         bar.addSeparator();
+        addToBar(bar, backupBtn);
         bar.add(nameBtn);
         bar.add(passwordBtn);
         bar.add(lockBtn);
@@ -112,6 +135,21 @@ public final class MainFrame extends JFrame {
         browser.setOpenAction(this::openItem);
         browser.setOnDelete(this::deleteItems);
         browser.addSelectionListener(e -> updateSelectionState());
+        browser.setDropHandler(new VaultBrowser.DropHandler() {
+            @Override
+            public void importDropped(List<Path> paths, String targetFolder) {
+                importPaths(paths, targetFolder);
+            }
+
+            @Override
+            public void moveDropped(List<VaultItem> items, String targetFolder) {
+                moveDroppedItems(items, targetFolder);
+            }
+        });
+        browser.setOnClearFilters(() -> {
+            search.setText("");
+            applyFilter();
+        });
 
         browser.entryList().addMouseListener(new MouseAdapter() {
             @Override
@@ -150,6 +188,7 @@ public final class MainFrame extends JFrame {
         });
 
         refresh();
+        SwingUtilities.invokeLater(this::maybeRunScheduledBackup);
     }
 
     private @NotNull JPanel buildStatusBar() {
@@ -249,28 +288,7 @@ public final class MainFrame extends JFrame {
             return;
         }
         List<Path> files = Arrays.stream(fc.getSelectedFiles()).map(File::toPath).toList();
-        String subfolder = browser.currentPath();
-        runTask("Importing files", "Encrypting and storing files…", (progress, cancelled) -> {
-            long[] total = {0};
-            for (Path f : files) {
-                total[0] += Files.size(f);
-            }
-            long[] done = {0};
-            for (Path f : files) {
-                if (cancelled.get()) {
-                    break;
-                }
-                long fileSize = Files.size(f);
-                long offset = done[0];
-                String name = f.getFileName().toString();
-                if (subfolder.isEmpty()) {
-                    manager.importFile(f, (d, t) -> progress.report(offset + d, total[0]));
-                } else {
-                    manager.importItemWithName(f, subfolder + "/" + name, (d, t) -> progress.report(offset + d, total[0]));
-                }
-                done[0] += fileSize;
-            }
-        }, this::refresh);
+        importPaths(files, browser.currentPath());
     }
 
     private void importFolder() {
@@ -280,28 +298,52 @@ public final class MainFrame extends JFrame {
         if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION || fc.getSelectedFile() == null) {
             return;
         }
-        Path root = fc.getSelectedFile().toPath();
-        String subfolder = browser.currentPath();
-        runTask("Importing folder", "Encrypting and storing folder…", (progress, cancelled) -> {
-            List<Path> files;
-            try (var stream = Files.walk(root)) {
-                files = stream.filter(Files::isRegularFile).sorted().toList();
+        importPaths(List.of(fc.getSelectedFile().toPath()), browser.currentPath());
+    }
+
+    private void importPaths(List<Path> paths, String targetFolder) {
+        if (paths == null || paths.isEmpty()) {
+            return;
+        }
+        List<Path> fileList = new ArrayList<>();
+        List<String> storedNames = new ArrayList<>();
+        for (Path p : paths) {
+            if (Files.isDirectory(p)) {
+                Path folderName = p.getFileName() == null ? p : p.getFileName();
+                try (var stream = Files.walk(p)) {
+                    for (Path f : stream.filter(Files::isRegularFile).sorted().toList()) {
+                        String rel = p.relativize(f).toString().replace('\\', '/');
+                        fileList.add(f);
+                        storedNames.add(folderName + "/" + rel);
+                    }
+                } catch (IOException e) {
+                    showError("Import", e.getMessage());
+                    return;
+                }
+            } else if (Files.isRegularFile(p)) {
+                fileList.add(p);
+                storedNames.add(p.getFileName().toString());
             }
+        }
+        if (fileList.isEmpty()) {
+            return;
+        }
+        String subfolder = targetFolder == null ? "" : targetFolder;
+        runTask("Importing files", "Encrypting and storing files…", (progress, cancelled) -> {
             long[] total = {0};
-            for (Path f : files) {
+            for (Path f : fileList) {
                 total[0] += Files.size(f);
             }
             long[] done = {0};
-            for (Path f : files) {
+            for (int i = 0; i < fileList.size(); i++) {
                 if (cancelled.get()) {
                     break;
                 }
+                Path f = fileList.get(i);
                 long fileSize = Files.size(f);
                 long offset = done[0];
-                Path relative = root.relativize(f);
-                String names = root.getFileName().toString() + "/" + relative.toString().replace('\\', '/');
-                String named = subfolder.isEmpty() ? names : subfolder + "/" + names;
-                manager.importItemWithName(f, named, (d, t) -> progress.report(offset + d, total[0]));
+                String full = subfolder.isEmpty() ? storedNames.get(i) : subfolder + "/" + storedNames.get(i);
+                manager.importItemWithName(f, full, (d, t) -> progress.report(offset + d, total[0]));
                 done[0] += fileSize;
             }
         }, this::refresh);
@@ -443,36 +485,114 @@ public final class MainFrame extends JFrame {
         }
         String message;
         if (selected.isEmpty() && folders.size() == 1) {
-            message = "Delete folder \"" + folders.getFirst()
-                    + "\" and permanently delete everything inside it?";
+            message = "Move folder \"" + folders.getFirst()
+                    + "\" and everything inside it to the trash?";
         } else if (selected.isEmpty()) {
-            message = "Delete " + folders.size() + " folders and everything inside them?";
+            message = "Move " + folders.size() + " folders and everything inside them to the trash?";
         } else if (folders.isEmpty() && selected.size() == 1) {
-            message = "Permanently delete \"" + selected.getFirst().name + "\" from the vault?";
+            message = "Move \"" + selected.getFirst().name + "\" to the trash?";
         } else {
-            message = "Permanently delete " + (selected.size() + folders.size()) + " selected items from the vault?";
+            message = "Move " + (selected.size() + folders.size()) + " selected items to the trash?";
         }
-        int choice = JOptionPane.showConfirmDialog(this, message, "Delete",
+        int choice = JOptionPane.showConfirmDialog(this, message, "Move to Trash",
                 JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
         if (choice != JOptionPane.YES_OPTION) {
             return;
         }
-        runTask("Deleting", "Removing encrypted items…", (progress, cancelled) -> {
+        runTask("Moving to trash", "Updating vault metadata…", (progress, cancelled) -> {
             for (String folder : folders) {
                 if (cancelled.get()) {
                     break;
                 }
-                manager.deleteFolder(folder);
+                manager.trashFolder(folder);
             }
             for (VaultItem item : selected) {
                 if (cancelled.get()) {
                     break;
                 }
-                if (manager.find(item.id) != null) {
-                    manager.deleteItem(item);
+                VaultItem current = manager.find(item.id);
+                if (current != null) {
+                    manager.trashItems(List.of(current));
                 }
             }
         }, this::refresh);
+    }
+
+    private void openTrash() {
+        new TrashDialog(this, manager, this::refresh).setVisible(true);
+    }
+
+    private void moveDroppedItems(List<VaultItem> items, String targetFolder) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        try {
+            manager.moveItems(items, targetFolder == null ? "" : targetFolder);
+            refresh();
+        } catch (Exception e) {
+            showError("Move", e.getMessage());
+        }
+    }
+
+    private void backupNow() {
+        JFileChooser fc = new JFileChooser();
+        fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        fc.setDialogTitle("Choose backup destination");
+        String dest = AppSettings.backupDestination();
+        if (!dest.isBlank()) {
+            try {
+                Path d = Paths.get(dest);
+                if (Files.isDirectory(d)) {
+                    fc.setSelectedFile(d.toFile());
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION || fc.getSelectedFile() == null) {
+            return;
+        }
+        Path dir = fc.getSelectedFile().toPath();
+        AppSettings.backupDestination(dir.toString());
+        runTask("Backing up vault", "Copying encrypted vault…", (progress, cancelled) ->
+                manager.backupTo(dir, progress), () -> {
+            rememberBackupTime();
+            JOptionPane.showMessageDialog(this,
+                    "Vault backed up to:\n" + dir, "Backup", JOptionPane.INFORMATION_MESSAGE);
+        });
+    }
+
+    private void maybeRunScheduledBackup() {
+        int days = AppSettings.backupIntervalDays();
+        if (days <= 0) {
+            return;
+        }
+        String dest = AppSettings.backupDestination();
+        if (dest.isBlank()) {
+            return;
+        }
+        Path dir;
+        try {
+            dir = Paths.get(dest);
+            if (!Files.isDirectory(dir)) {
+                return;
+            }
+        } catch (Exception e) {
+            return;
+        }
+        long last = prefs.getLong(backupPrefKey(), 0);
+        if (last > 0 && System.currentTimeMillis() - last < days * 86_400_000L) {
+            return;
+        }
+        runTask("Scheduled backup", "Backing up vault to " + dir + "…", (progress, cancelled) ->
+                manager.backupTo(dir, progress), this::rememberBackupTime);
+    }
+
+    private void rememberBackupTime() {
+        prefs.putLong(backupPrefKey(), System.currentTimeMillis());
+    }
+
+    private String backupPrefKey() {
+        return "lastBackup." + manager.vaultDir();
     }
 
     private void renameVault() {
@@ -537,7 +657,7 @@ public final class MainFrame extends JFrame {
     }
 
     private void openSettings() {
-        new SettingsDialog(this).setVisible(true);
+        new SettingsDialog(this, manager).setVisible(true);
     }
 
     private void openSelection() {
@@ -550,30 +670,50 @@ public final class MainFrame extends JFrame {
 
     private void openItem(VaultItem item) {
         setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
-        SwingWorker<Path, Void> worker = new SwingWorker<>() {
+        SwingWorker<Object, Void> worker = new SwingWorker<>() {
             @Override
-            protected Path doInBackground() throws Exception {
+            protected Object doInBackground() throws Exception {
+                FileTypes.Category category = item.category();
+                if (item.size <= RAM_PREVIEW_LIMIT
+                        && (category == FileTypes.Category.IMAGE || category == FileTypes.Category.TEXT)) {
+                    return manager.decryptToBytes(item);
+                }
                 return manager.decryptToTemp(item);
             }
 
             @Override
             protected void done() {
                 setCursor(Cursor.getDefaultCursor());
-                Path temp = null;
+                Object result = null;
                 try {
-                    temp = get();
-                    launchViewer(item, temp);
+                    result = get();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    TempFiles.delete(temp);
                 } catch (ExecutionException e) {
-                    TempFiles.delete(temp);
+                    if (result instanceof Path path) {
+                        TempFiles.delete(path);
+                    }
                     Throwable cause = e.getCause() != null ? e.getCause() : e;
                     showError("Could not open \"" + item.name + "\"", cause.getMessage());
+                    return;
+                }
+                if (result instanceof byte[] bytes) {
+                    launchViewer(item, bytes);
+                } else if (result instanceof Path path) {
+                    launchViewer(item, path);
                 }
             }
         };
         worker.execute();
+    }
+
+    private void launchViewer(VaultItem item, byte @NotNull [] content) {
+        switch (item.category()) {
+            case IMAGE -> new ImageViewer(item, manager, content).setVisible(true);
+            case TEXT -> new TextViewer(item, manager, content).setVisible(true);
+            default -> {
+            }
+        }
     }
 
     private void launchViewer(VaultItem item, Path temp) {

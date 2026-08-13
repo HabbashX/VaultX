@@ -15,6 +15,12 @@ public final class AppSettings {
     private static final String KEY_EDITOR_FONT = "editorFont";
     private static final String KEY_EDITOR_FONT_SIZE = "editorFontSize";
     private static final String KEY_EDITOR_THEME = "editorTheme";
+    private static final String KEY_PROTECT_FOLDER = "protectFolder";
+    private static final String KEY_SELF_DESTRUCT = "selfDestruct";
+    private static final String KEY_MAX_ATTEMPTS = "maxAttempts";
+    private static final String KEY_TRASH_RETENTION_DAYS = "trashRetentionDays";
+    private static final String KEY_BACKUP_DEST = "backupDestination";
+    private static final String KEY_BACKUP_INTERVAL_DAYS = "backupIntervalDays";
 
     private static final Preferences PREFERENCES = Preferences.userNodeForPackage(AppSettings.class);
 
@@ -81,5 +87,57 @@ public final class AppSettings {
             return;
         }
         PREFERENCES.put(KEY_EDITOR_THEME, themeFileName);
+    }
+
+    public static boolean protectFolder() {
+        return PREFERENCES.getBoolean(KEY_PROTECT_FOLDER, true);
+    }
+
+    public static void protectFolder(boolean value) {
+        PREFERENCES.putBoolean(KEY_PROTECT_FOLDER, value);
+    }
+
+    public static boolean selfDestruct() {
+        return PREFERENCES.getBoolean(KEY_SELF_DESTRUCT, false);
+    }
+
+    public static void selfDestruct(boolean value) {
+        PREFERENCES.putBoolean(KEY_SELF_DESTRUCT, value);
+    }
+
+    public static int maxAttempts() {
+        return Math.max(3, Math.min(30, PREFERENCES.getInt(KEY_MAX_ATTEMPTS, 10)));
+    }
+
+    public static void maxAttempts(int value) {
+        PREFERENCES.putInt(KEY_MAX_ATTEMPTS, Math.max(3, Math.min(30, value)));
+    }
+
+    public static int trashRetentionDays() {
+        return Math.max(0, Math.min(365, PREFERENCES.getInt(KEY_TRASH_RETENTION_DAYS, 30)));
+    }
+
+    public static void trashRetentionDays(int value) {
+        PREFERENCES.putInt(KEY_TRASH_RETENTION_DAYS, Math.max(0, Math.min(365, value)));
+    }
+
+    public static String backupDestination() {
+        return PREFERENCES.get(KEY_BACKUP_DEST, "");
+    }
+
+    public static void backupDestination(String path) {
+        if (path == null || path.isBlank()) {
+            PREFERENCES.remove(KEY_BACKUP_DEST);
+        } else {
+            PREFERENCES.put(KEY_BACKUP_DEST, path.trim());
+        }
+    }
+
+    public static int backupIntervalDays() {
+        return Math.max(0, Math.min(3650, PREFERENCES.getInt(KEY_BACKUP_INTERVAL_DAYS, 0)));
+    }
+
+    public static void backupIntervalDays(int value) {
+        PREFERENCES.putInt(KEY_BACKUP_INTERVAL_DAYS, Math.max(0, Math.min(3650, value)));
     }
 }
