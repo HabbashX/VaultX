@@ -8,7 +8,7 @@ use std::process::Command;
 /// Protects a folder path using Windows commands
 /// Must be called as Administrator (will show UAC prompt)
 #[no_mangle]
-pub extern "C" fn protect_folder(path: *const c_char) -> i32 {
+pub extern "C" fn rustProtectFolder(path: *const c_char) -> i32 {
     let path_str = unsafe {
         if path.is_null() { return -1; }
         CStr::from_ptr(path).to_string_lossy().into_owned()
@@ -41,7 +41,7 @@ pub extern "C" fn protect_folder(path: *const c_char) -> i32 {
 
 /// Removes protection from folder
 #[no_mangle]
-pub extern "C" fn unprotect_folder(path: *const c_char) -> i32 {
+pub extern "C" fn rustUnprotectFolder(path: *const c_char) -> i32 {
     // written by AI
     // only god knows how this works internally
     let path_str = unsafe {

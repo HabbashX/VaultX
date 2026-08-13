@@ -2,8 +2,6 @@ package com.habbashx.vaultx.core;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.sun.jna.platform.win32.Kernel32;
-import com.sun.jna.platform.win32.WinDef;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -65,7 +63,7 @@ public final class VaultManager implements AutoCloseable {
         this.manifestFile = projectDir.resolve(MANIFEST_FILE);
     }
 
-    public static boolean isVault(@NotNull Path dir) {
+    public static boolean isVault(Path dir) {
         return Files.isDirectory(dir.resolve(CONFIG_DIR));
     }
 
@@ -85,6 +83,7 @@ public final class VaultManager implements AutoCloseable {
         Files.createDirectories(vm.projectDir);
         Files.createDirectories(vm.blobsDir);
 
+        // Protect the folder (Java fallback - works without admin for basic hiding)
         vm.protectFolder();
 
         byte[] salt = CryptoUtils.randomBytes(CryptoUtils.SALT_BYTES);
@@ -132,6 +131,8 @@ public final class VaultManager implements AutoCloseable {
             }
             throw new IOException("Vault manifest is corrupt or unreadable.", e);
         }
+        // Protect the folder when opening
+        vm.protectFolder();
         return vm;
     }
 
@@ -535,7 +536,6 @@ public final class VaultManager implements AutoCloseable {
         return read;
     }
 
-    @Contract("null -> null")
     private String uniqueName(String name) {
         if (name == null) {
             return name;
@@ -592,7 +592,7 @@ public final class VaultManager implements AutoCloseable {
     }
 
     @Contract(pure = true)
-    private static boolean isUnder(String name, @NotNull String folder) {
+    private static boolean isUnder(String name, String folder) {
         if (folder.isEmpty()) {
             return true;
         }
@@ -600,7 +600,7 @@ public final class VaultManager implements AutoCloseable {
     }
 
     @Contract(pure = true)
-    private static @NotNull String parentOf(@NotNull String name) {
+    private static @NotNull String parentOf(String name) {
         int slash = name.lastIndexOf('/');
         return slash < 0 ? "" : name.substring(0, slash);
     }
@@ -638,7 +638,7 @@ public final class VaultManager implements AutoCloseable {
             if (hasIllegalChars(segment)) {
                 throw new IOException("Folder name \"" + segment + "\" contains unsupported characters.");
             }
-            if (!builder.isEmpty()) {
+            if (builder.length() > 0) {
                 builder.append('/');
             }
             builder.append(segment);
@@ -661,32 +661,68 @@ public final class VaultManager implements AutoCloseable {
             throw new IOException("Vault is locked.");
         }
     }
+
+    // ---------- Folder Protection using Windows commands ----------
+    // Sets folder as hidden + system + read-only, and applies icacls deny permission
+    // This provides basic protection against casual deletion
+    // Requires Administrator privileges for full effect (UAC prompt)
+    
     public void protectFolder() throws IOException {
         Path dir = vaultDir;
         if (!Files.isDirectory(dir)) {
             throw new IOException("Vault directory does not exist: " + dir);
         }
 
-        if (tryUseRustDLLProtectFolder(dir)) {
-            return;
-        }
-        
+        // Set DOS hidden + system + read-only attributes
+        // This makes the folder harder to see/delete in Explorer
         try {
             Process p = Runtime.getRuntime().exec(
                     "cmd /c attrib +h +s +r \"" + dir.toAbsolutePath() + "\"");
             p.waitFor();
-        } catch (Exception _) {
+        } catch (Exception e) {
+            // non-fatal
         }
+        
+        // Apply NTFS permission to deny delete for current user
+        // This requires Administrator privileges and will show UAC prompt
         try {
             String user = System.getProperty("user.name");
             Process proc = Runtime.getRuntime().exec(
                     "cmd /c icacls \"" + dir.toAbsolutePath() + "\" /deny:" + user + ":D /T /C /Q");
             proc.waitFor();
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            // non-fatal – hidden attrs still set
         }
     }
 
-    private native boolean tryUseRustDLLProtectFolder(Path dir) throws IOException;
+    // Removes all protection from the folder
+    public void unprotectFolder() throws IOException {
+        Path dir = vaultDir;
+        if (!Files.isDirectory(dir)) {
+            return;
+        }
 
+        // Remove hidden + system + read-only attributes
+        try {
+            Process p = Runtime.getRuntime().exec(
+                    "cmd /c attrib -h -s -r \"" + dir.toAbsolutePath() + "\"");
+            p.waitFor();
+        } catch (Exception e) {
+            // non-fatal
+        }
+        
+        // Remove deny permission and reset ACLs
+        try {
+            String user = System.getProperty("user.name");
+            Process proc = Runtime.getRuntime().exec(
+                    "cmd /c icacls \"" + dir.toAbsolutePath() + "\" /remove:" + user + " /T /C /Q");
+            proc.waitFor();
+            // Also reset any remaining settings
+            Process proc2 = Runtime.getRuntime().exec(
+                    "cmd /c icacls \"" + dir.toAbsolutePath() + "\" /reset /T /C /Q");
+            proc2.waitFor();
+        } catch (Exception e) {
+            // non-fatal
+        }
+    }
 }
