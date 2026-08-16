@@ -9,7 +9,7 @@ VaultX is a cross-platform desktop application for securely encrypting and manag
 
 - **Platform**: Windows, macOS, Linux (Java 25+)
 - **License**: [MIT](LICENSE)
-- **Latest release**: [v1.0.1](https://github.com/HabbashX/VaultX/releases/tag/v1.0.1)
+- **Latest release**: [v1.0.2](https://github.com/HabbashX/VaultX/releases/tag/v1.0.2)
 
 ---
 
@@ -91,7 +91,7 @@ VaultX is a cross-platform desktop application for securely encrypting and manag
 ## Installation
 
 ### Windows (recommended)
-1. Download the latest installer from the [Releases page](https://github.com/HabbashX/VaultX/releases) - e.g. `VaultX-1.0.1.exe`.
+1. Download the latest installer from the [Releases page](https://github.com/HabbashX/VaultX/releases) - e.g. `VaultX-1.0.2.exe`.
 2. Run the installer and follow the prompts (choose the install directory and start-menu shortcut).
 3. Launch **VaultX** from the Start Menu or desktop shortcut.
 
@@ -160,11 +160,13 @@ mkdir target/app-input
 cp target/vaultx.jar target/app-input/
 cp target/lib/* target/app-input/
 
-# Create a standalone installer that bundles the Java runtime (needs JDK 25 and WiX on Windows)
+# Create a standalone installer that bundles the Java runtime (needs JDK 25 and WiX on Windows).
+# IMPORTANT: jpackage must be the one from the SAME JDK that compiled the code (JDK 25).
+# Using an older jpackage (e.g. JDK 22 from PATH) bundles a runtime that cannot load the app classes.
 jpackage \
   --type exe \
   --name VaultX \
-  --app-version 1.0.1 \
+  --app-version 1.0.2 \
   --vendor "HabbashX" \
   --input target/app-input \
   --main-jar vaultx.jar \
@@ -176,7 +178,7 @@ jpackage \
   --dest exe
 ```
 
-The resulting `exe/VaultX-1.0.1.exe` is a self-contained installer - users do **not** need Java installed.
+The resulting `exe/VaultX-1.0.2.exe` is a self-contained installer - users do **not** need Java installed.
 
 ---
 
