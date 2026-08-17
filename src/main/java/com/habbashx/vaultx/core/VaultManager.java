@@ -527,6 +527,7 @@ public final class VaultManager implements AutoCloseable {
         }
         int count = 0;
         long now = System.currentTimeMillis();
+        Set<String> affected = new HashSet<>();
         for (VaultItem item : items) {
             VaultItem current = find(item.id);
             if (current == null || current.trashed) {
@@ -535,8 +536,10 @@ public final class VaultManager implements AutoCloseable {
             current.trashed = true;
             current.trashedAt = now;
             count++;
+            collectAffectedFolders(current.name, affected);
         }
         if (count > 0) {
+            pruneEmptyFolders(affected);
             saveManifest();
         }
         return count;
@@ -549,12 +552,25 @@ public final class VaultManager implements AutoCloseable {
             throw new IOException("Cannot trash the vault root.");
         }
         List<VaultItem> victims = new ArrayList<>();
+        Set<String> affected = new HashSet<>();
+        affected.add(folder.toLowerCase(Locale.ROOT));
+        if (manifest.folders != null) {
+            for (String f : manifest.folders) {
+                if (isUnder(f, folder)) {
+                    affected.add(f.toLowerCase(Locale.ROOT));
+                }
+            }
+        }
         for (VaultItem item : manifest.items) {
             if (!item.trashed && isUnder(item.name, folder)) {
                 victims.add(item);
+                collectAffectedFolders(item.name, affected);
             }
         }
-        return trashItems(victims);
+        int count = trashItems(victims);
+        pruneEmptyFolders(affected);
+        saveManifest();
+        return count;
     }
 
     public synchronized void restoreItems(@NotNull List<VaultItem> items) throws IOException {
@@ -574,6 +590,9 @@ public final class VaultManager implements AutoCloseable {
             current.name = parent.isEmpty() ? unique : parent + "/" + unique;
             current.trashed = false;
             current.trashedAt = 0;
+            if (!parent.isEmpty()) {
+                ensureFolderParents(parent);
+            }
             changed = true;
         }
         if (changed) {
@@ -649,6 +668,22 @@ public final class VaultManager implements AutoCloseable {
         while (parent != null && !parent.isEmpty()) {
             out.add(parent.toLowerCase(Locale.ROOT));
             parent = parentOf(parent);
+        }
+    }
+
+    private void ensureFolderParents(String folder) {
+        if (manifest.folders == null) {
+            manifest.folders = new ArrayList<>();
+        }
+        StringBuilder current = new StringBuilder();
+        for (String part : folder.split("/")) {
+            if (current.length() > 0) {
+                current.append('/');
+            }
+            current.append(part);
+            if (indexOfFolder(current.toString()) < 0) {
+                manifest.folders.add(current.toString());
+            }
         }
     }
 

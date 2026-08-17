@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VaultManagerTest {
 
@@ -148,6 +149,42 @@ class VaultManagerTest {
         Path temp = manager.decryptToTemp(item);
         assertEquals("line1\nline2\n", Files.readString(temp));
         TempFiles.delete(temp);
+        manager.close();
+    }
+
+    @Test
+    void trashFolderRemovesFolderAndRestoreBringsItBack() throws Exception {
+        Path vault = tempDir.resolve("vault");
+        VaultManager manager = VaultManager.create(vault, "Test", PASSWORD);
+        manager.createFolder("Docs");
+        VaultItem doc = manager.importItemWithName(
+                writeText("original.txt", "hello"), "Docs/original.txt", null);
+
+        assertEquals("Docs/original.txt", doc.name);
+        assertTrue(manager.folders().contains("Docs"));
+
+        manager.trashFolder("Docs");
+        assertEquals(0, manager.size());
+        assertTrue(manager.folders().isEmpty());
+        assertEquals(1, manager.trashedItems().size());
+
+        manager.restoreItems(manager.trashedItems());
+        assertEquals(1, manager.size());
+        assertTrue(manager.folders().contains("Docs"));
+        assertEquals("Docs/original.txt", manager.items().get(0).name);
+        manager.close();
+    }
+
+    @Test
+    void trashEmptyFolderRemovesIt() throws Exception {
+        Path vault = tempDir.resolve("vault");
+        VaultManager manager = VaultManager.create(vault, "Test", PASSWORD);
+        manager.createFolder("Empty");
+        assertTrue(manager.folders().contains("Empty"));
+
+        manager.trashFolder("Empty");
+        assertEquals(0, manager.size());
+        assertTrue(manager.folders().isEmpty());
         manager.close();
     }
 }
